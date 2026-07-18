@@ -1,0 +1,16 @@
+{
+  "name": "Runner Pace Timer",
+  "short_name": "PaceTimer",
+  "start_url": "./index.html",
+  "display": "standalone",
+  "background_color": "#0f172a",
+  "theme-color": "#0f172a",
+  "orientation": "portrait",
+  "icons": [
+    {
+      "src": "https://cdn-icons-png.flaticon.com/512/5219/5219258.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ]
+}

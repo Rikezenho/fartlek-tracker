@@ -1,0 +1,491 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Runner Pace Timer</title>
+  <meta name="theme-color" content="#0f172a">
+  <link rel="manifest" href="manifest.json">
+  <style>
+    :root {
+      --bg-main: #0f172a;
+      --bg-card: #1e293b;
+      --accent: #10b981;
+      --accent-warn: #ef4444;
+      --text-main: #f8fafc;
+      --text-muted: #94a3b8;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; }
+    body { background-color: var(--bg-main); color: var(--text-main); padding: 20px; display: flex; flex-direction: column; align-items: center; min-height: 100vh; }
+    main { width: 100%; max-width: 500px; display: flex; flex-direction: column; gap: 20px; }
+    h1, h2 { text-align: center; font-weight: 700; }
+    .card { background: var(--bg-card); padding: 20px; border-radius: 16px; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.3); }
+    
+    /* Input customizado para o Titulo */
+    .title-input { background: transparent; border: none; border-bottom: 2px dashed var(--text-muted); color: var(--text-main); font-size: 1.8rem; font-weight: 700; text-align: center; width: 100%; margin-bottom: 5px; }
+    .title-input:focus { outline: none; border-bottom-color: var(--accent); }
+
+    /* Timer Display */
+    .timer-display { text-align: center; padding: 30px 10px; border: 4px solid var(--accent); border-radius: 50%; width: 260px; height: 260px; margin: 0 auto; display: flex; flex-direction: column; justify-content: center; align-items: center; background: #020617; transition: border-color 0.3s; }
+    .timer-display.warn { border-color: var(--accent-warn); }
+    #current-block-name { font-size: 1.2rem; color: var(--text-muted); margin-bottom: 5px; text-transform: uppercase; letter-spacing: 0.05em; }
+    #time-left { font-size: 3.5rem; font-weight: 800; font-variant-numeric: tabular-nums; line-height: 1; }
+    #current-pace { font-size: 1rem; color: var(--accent); margin-top: 10px; font-weight: 600; }
+
+    /* Controls */
+    .controls { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 10px; }
+    button { background: var(--bg-card); border: 2px solid var(--accent); color: var(--text-main); padding: 14px; border-radius: 12px; font-size: 1rem; font-weight: 600; cursor: pointer; transition: all 0.2s; -webkit-tap-highlight-color: transparent; }
+    button:active { transform: scale(0.98); }
+    button.primary { background: var(--accent); color: #020617; }
+    button.danger { border-color: var(--accent-warn); background: transparent; color: var(--accent-warn); }
+    button.small { padding: 6px 12px; font-size: 0.85rem; border-radius: 6px; }
+    button:disabled { border-color: var(--text-muted); color: var(--text-muted); opacity: 0.5; cursor: not-allowed; }
+    
+    /* Config & Blocks List */
+    .block-item { background: #0f172a; padding: 12px; border-radius: 8px; margin-top: 8px; display: flex; justify-content: space-between; align-items: center; border-left: 4px solid var(--accent); }
+    .block-info { display: flex; flex-direction: column; gap: 20px; margin-bottom: 15px; background: #0f172a; padding: 15px; border-radius: 12px; }
+    .form-group { display: flex; flex-direction: column; gap: 4px; }
+    .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+    label { font-size: 0.85rem; color: var(--text-muted); font-weight: 600; }
+    input, select { background: #1e293b; border: 1px solid var(--text-muted); color: var(--text-main); padding: 10px; border-radius: 8px; font-size: 1rem; }
+    input:focus, select:focus { outline: none; border-color: var(--accent); }
+    
+    .file-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 15px; }
+    input[type="file"] { display: none; }
+    .file-label { text-align: center; border: 2px dashed var(--text-muted); padding: 12px; border-radius: 12px; color: var(--text-muted); cursor: pointer; display: block; font-weight: 600; }
+    
+    .actions-list { display: flex; gap: 6px; }
+  </style>
+</head>
+<body>
+
+<main>
+  <header>
+    <input type="text" id="workout-title" class="title-input" value="Treino Intervalado" onchange="atualizarNomeTreino(this.value)">
+  </header>
+
+  <!-- Painel do Cronômetro Ativo -->
+  <section class="card">
+    <div class="timer-display" id="display-wrapper">
+      <div id="current-block-name">Pronto</div>
+      <div id="time-left">00:00</div>
+      <div id="current-pace">Pace: --:--</div>
+    </div>
+    
+    <div class="controls">
+      <button id="btn-start" class="primary" onclick="timerControls.start()">Iniciar</button>
+      <button id="btn-reset" class="danger" onclick="timerControls.reset()" disabled>Resetar</button>
+    </div>
+  </section>
+
+  <!-- Criador/Editor de Blocos -->
+  <section class="card">
+    <h2 style="margin-bottom: 15px; font-size: 1.3rem; text-align: left;">Adicionar / Editar Bloco</h2>
+    <div class="block-info">
+      <input type="hidden" id="edit-index" value="-1">
+      <div class="form-group">
+        <label>Nome do Bloco</label>
+        <input type="text" id="block-name" placeholder="Ex: Tiro Rápido, Recuperação...">
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label>Minutos</label>
+          <input type="number" id="block-min" min="0" value="1">
+        </div>
+        <div class="form-group">
+          <label>Segundos</label>
+          <input type="number" id="block-sec" min="0" max="59" value="0">
+        </div>
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label>Pace Mínimo (Ex: 5:00)</label>
+          <input type="text" id="block-pace-min" placeholder="MM:SS (Opcional)">
+        </div>
+        <div class="form-group">
+          <label>Pace Máximo (Ex: 5:30)</label>
+          <input type="text" id="block-pace-max" placeholder="MM:SS (Opcional)">
+        </div>
+      </div>
+      <button id="btn-save-block" class="primary" onclick="salvarBloco()">Adicionar Bloco</button>
+    </div>
+
+    <h2>Estrutura do Treino</h2>
+    <div id="blocks-container" style="margin-top: 10px;">
+      <!-- Injetado via JS -->
+    </div>
+
+    <div class="file-actions">
+      <button onclick="exportarTreinoAtual()">Exportar JSON</button>
+      <label for="file-import" class="file-label">Importar JSON</label>
+      <input type="file" id="file-import" accept=".json" onchange="importarTreino(event)">
+    </div>
+  </section>
+</main>
+
+<script>
+if ('serviceWorker' in navigator) {
+  navigator.serviceWorker.register('sw.js').catch(err => console.error("SW erro:", err));
+}
+
+// --- CORE DE ÁUDIO ---
+const backgroundAudio = new Audio('data:audio/wav;base64,UklGRigAAABXQVZFZm10IBAAAAABAAEARKwAAIhYAQACABAAZGF0YQQAAAAAAAUA');
+backgroundAudio.loop = true;
+
+function setupMediaSession() {
+  if ('mediaSession' in navigator) {
+    navigator.mediaSession.metadata = new MediaMetadata({
+      title: treinoAtivo.nomeTreino,
+      artist: 'Pace Timer PWA',
+      album: 'Bloco em execução'
+    });
+
+    navigator.mediaSession.setActionHandler('play', () => { backgroundAudio.play(); timerControls.resume(); });
+    navigator.mediaSession.setActionHandler('pause', () => { backgroundAudio.pause(); timerControls.pause(); });
+  }
+}
+
+function playBeep(frequency = 440, duration = 0.1) {
+  try {
+    const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    const oscillator = audioCtx.createOscillator();
+    const gainNode = audioCtx.createGain();
+    oscillator.connect(gainNode);
+    gainNode.connect(audioCtx.destination);
+    oscillator.frequency.value = frequency;
+    oscillator.type = 'sine';
+    oscillator.start();
+    gainNode.gain.setValueAtTime(0.5, audioCtx.currentTime);
+    gainNode.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + duration);
+    oscillator.stop(audioCtx.currentTime + duration);
+  } catch (e) { console.error(e); }
+}
+
+// --- AUXILIARES DE CONVERSÃO DE PACE ---
+function paceParaSegundos(str) {
+  if (!str || !str.includes(':')) return null;
+  const partes = str.split(':');
+  return (parseInt(partes[0], 10) * 60) + parseInt(partes[1], 10);
+}
+
+function segundosParaPace(segundos) {
+  if (!segundos) return '';
+  const m = Math.floor(segundos / 60);
+  const s = (segundos % 60).toString().padStart(2, '0');
+  return `${m}:${s}`;
+}
+
+// --- PERSISTÊNCIA E DADOS INICIAIS ---
+const treinoPadrao = {
+  "nomeTreino": "Intervalado de Terça",
+  "blocos": [
+    { "nome": "Aquecimento", "duracaoSegundos": 300, "paceMin": null, "paceMax": null },
+    { "nome": "Tiro Rápido", "duracaoSegundos": 60, "paceMin": 300, "paceMax": 330 },
+    { "nome": "Recuperação", "duracaoSegundos": 90, "paceMin": null, "paceMax": null }
+  ]
+};
+
+let treinoAtivo = JSON.parse(localStorage.getItem('treino_ativo')) || treinoPadrao;
+
+function persistirEAtualizar() {
+  localStorage.setItem('treino_ativo', JSON.stringify(treinoAtivo));
+  renderizarTreino();
+}
+
+function atualizarNomeTreino(novoNome) {
+  treinoAtivo.nomeTreino = novoNome || "Treino Sem Nome";
+  persistirEAtualizar();
+}
+
+// --- ENGINE PRINCIPAL DO CRONÔMETRO (LOOP CONTÍNUO) ---
+let estadoTreino = {
+  intervalId: null,
+  watchId: null,
+  blocoAtualIndex: 0,
+  tempoRestanteNoBloco: 0,
+  estaRodando: false
+};
+
+const timerControls = {
+  start() {
+    if (treinoAtivo.blocos.length === 0) { alert("Adicione pelo menos um bloco antes de iniciar."); return; }
+    if (estadoTreino.estaRodando) { this.pause(); return; }
+
+    backgroundAudio.play().catch(() => {});
+    setupMediaSession();
+
+    estadoTreino.estaRodando = true;
+    document.getElementById('btn-start').innerText = 'Pausar';
+    document.getElementById('btn-reset').disabled = false;
+
+    if (estadoTreino.intervalId === null) {
+      const bloco = treinoAtivo.blocos[estadoTreino.blocoAtualIndex];
+      if (estadoTreino.tempoRestanteNoBloco === 0) {
+        estadoTreino.tempoRestanteNoBloco = bloco.duracaoSegundos;
+      }
+      this.iniciarGps(bloco);
+    }
+
+    estadoTreino.intervalId = setInterval(() => {
+      estadoTreino.tempoRestanteNoBloco--;
+      this.atualizarDisplay();
+
+      if (estadoTreino.tempoRestanteNoBloco <= 3 && estadoTreino.tempoRestanteNoBloco > 0) {
+        playBeep(440, 0.1);
+      }
+
+      if (estadoTreino.tempoRestanteNoBloco <= 0) {
+        this.avancarBloco();
+      }
+    }, 1000);
+  },
+
+  pause() {
+    estadoTreino.estaRodando = false;
+    document.getElementById('btn-start').innerText = 'Retomar';
+    clearInterval(estadoTreino.intervalId);
+    this.pararGps();
+  },
+
+  resume() { if (!estadoTreino.estaRodando) this.start(); },
+
+  reset() {
+    // Confirmação de segurança exigida antes de resetar a corrida
+    if (confirm("Tem certeza que deseja resetar o treino atual? Seu progresso será reiniciado.")) {
+      clearInterval(estadoTreino.intervalId);
+      this.pararGps();
+      estadoTreino.intervalId = null;
+      estadoTreino.blocoAtualIndex = 0;
+      estadoTreino.tempoRestanteNoBloco = 0;
+      estadoTreino.estaRodando = false;
+      
+      document.getElementById('btn-start').innerText = 'Iniciar';
+      document.getElementById('btn-reset').disabled = true;
+      document.getElementById('display-wrapper').classList.remove('warn');
+      this.atualizarDisplay();
+    }
+  },
+
+  avancarBloco() {
+    // 1. Limpa completamente os processos do bloco que acabou
+    clearInterval(estadoTreino.intervalId);
+    estadoTreino.intervalId = null;
+    this.pararGps();
+    
+    // 2. Emite o sinal sonoro de transição (agudo e longo)
+    playBeep(880, 0.5);
+
+    // 3. Avança o índice para o próximo bloco
+    estadoTreino.blocoAtualIndex++;
+    
+    // 4. VERIFICAÇÃO DE FIM DE TREINO:
+    // Se o índice for igual ou maior que o total de blocos, o treino acabou!
+    if (estadoTreino.blocoAtualIndex >= treinoAtivo.blocos.length) {
+      // Finaliza o treino de forma limpa e para sozinho
+      estadoTreino.intervalId = null;
+      estadoTreino.blocoAtualIndex = 0;
+      estadoTreino.tempoRestanteNoBloco = 0;
+      estadoTreino.estaRodando = false;
+      
+      document.getElementById('btn-start').innerText = 'Iniciar';
+      document.getElementById('btn-reset').disabled = true;
+      document.getElementById('display-wrapper').classList.remove('warn');
+      document.getElementById('current-block-name').innerText = "Concluído!";
+      document.getElementById('time-left').innerText = "00:00";
+      
+      // Bipe longo de vitória
+      playBeep(1200, 0.8);
+      return; // Sai da função e não inicia nada novo
+    }
+
+    // 5. Se ainda houver blocos, carrega o próximo e continua a execução automaticamente
+    const proximoBloco = treinoAtivo.blocos[estadoTreino.blocoAtualIndex];
+    estadoTreino.tempoRestanteNoBloco = proximoBloco.duracaoSegundos;
+    
+    // Reinicia o GPS com as metas do novo bloco
+    this.iniciarGps(proximoBloco);
+    
+    // Força o estado a continuar rodando e engata o cronômetro novamente
+    estadoTreino.estaRodando = false; 
+    this.start();
+  },
+
+  iniciarGps(bloco) {
+    if (!("geolocation" in navigator) || (!bloco.paceMin && !bloco.paceMax)) return;
+
+    estadoTreino.watchId = navigator.geolocation.watchPosition((position) => {
+      const speed = position.coords.speed;
+      if (speed && speed > 0.5) {
+        const paceDecimal = 16.6667 / speed; 
+        const totalSecondsPerKm = paceDecimal * 60;
+        
+        const minPart = Math.floor(totalSecondsPerKm / 60);
+        const secPart = Math.floor(totalSecondsPerKm % 60).toString().padStart(2, '0');
+        document.getElementById('current-pace').innerText = `Pace: ${minPart}:${secPart} /km`;
+
+        const displayWrapper = document.getElementById('display-wrapper');
+        if (bloco.paceMax && totalSecondsPerKm > bloco.paceMax) {
+          playBeep(330, 0.4); 
+          displayWrapper.classList.add('warn');
+        } else if (bloco.paceMin && totalSecondsPerKm < bloco.paceMin) {
+          playBeep(1000, 0.15);
+          displayWrapper.classList.add('warn');
+        } else {
+          displayWrapper.classList.remove('warn');
+        }
+      }
+    }, (err) => console.error(err), { enableHighAccuracy: true, timeout: 4000, maximumAge: 0 });
+  },
+
+  pararGps() {
+    if (estadoTreino.watchId !== null) {
+      navigator.geolocation.clearWatch(estadoTreino.watchId);
+      estadoTreino.watchId = null;
+    }
+    document.getElementById('current-pace').innerText = `Pace: --:--`;
+  },
+
+  atualizarDisplay() {
+    const bloco = treinoAtivo.blocos[estadoTreino.blocoAtualIndex];
+    if (!bloco) {
+      document.getElementById('current-block-name').innerText = "Pronto";
+      document.getElementById('time-left').innerText = "00:00";
+      return;
+    }
+
+    document.getElementById('current-block-name').innerText = bloco.nome;
+    const displayTempo = estadoTreino.tempoRestanteNoBloco > 0 ? estadoTreino.tempoRestanteNoBloco : bloco.duracaoSegundos;
+    const m = Math.floor(displayTempo / 60).toString().padStart(2, '0');
+    const s = Math.floor(displayTempo % 60).toString().padStart(2, '0');
+    document.getElementById('time-left').innerText = `${m}:${s}`;
+  }
+};
+
+// --- CRUD DE BLOCOS DO TREINO ---
+function salvarBloco() {
+  const nome = document.getElementById('block-name').value.trim() || "Bloco";
+  const min = parseInt(document.getElementById('block-min').value, 10) || 0;
+  const sec = parseInt(document.getElementById('block-sec').value, 10) || 0;
+  const duracaoSegundos = (min * 60) + sec;
+
+  if (duracaoSegundos <= 0) { alert("Insira uma duração válida maior que zero."); return; }
+
+  const paceMinStr = document.getElementById('block-pace-min').value.trim();
+  const paceMaxStr = document.getElementById('block-pace-max').value.trim();
+
+  const novoBloco = {
+    nome,
+    duracaoSegundos,
+    paceMin: paceParaSegundos(paceMinStr),
+    paceMax: paceParaSegundos(paceMaxStr)
+  };
+
+  const editIndex = parseInt(document.getElementById('edit-index').value, 10);
+
+  if (editIndex === -1) {
+    // Adiciona novo
+    treinoAtivo.blocos.push(novoBloco);
+  } else {
+    // Salva a edição por cima
+    treinoAtivo.blocos[editIndex] = novoBloco;
+    document.getElementById('edit-index').value = "-1";
+    document.getElementById('btn-save-block').innerText = "Adicionar Bloco";
+  }
+
+  // Limpa formulário
+  document.getElementById('block-name').value = '';
+  document.getElementById('block-min').value = '1';
+  document.getElementById('block-sec').value = '0';
+  document.getElementById('block-pace-min').value = '';
+  document.getElementById('block-pace-max').value = '';
+
+  persistirEAtualizar();
+  timerControls.reset();
+}
+
+function editarBloco(index) {
+  const bloco = treinoAtivo.blocos[index];
+  document.getElementById('edit-index').value = index;
+  document.getElementById('block-name').value = bloco.nome;
+  document.getElementById('block-min').value = Math.floor(bloco.duracaoSegundos / 60);
+  document.getElementById('block-sec').value = bloco.duracaoSegundos % 60;
+  document.getElementById('block-pace-min').value = segundosParaPace(bloco.paceMin);
+  document.getElementById('block-pace-max').value = segundosParaPace(bloco.paceMax);
+
+  document.getElementById('btn-save-block').innerText = "Atualizar Bloco";
+  document.getElementById('block-name').focus();
+}
+
+function deletarBloco(index) {
+  if (confirm("Deseja remover este bloco?")) {
+    treinoAtivo.blocos.splice(index, 1);
+    persistirEAtualizar();
+    timerControls.reset();
+  }
+}
+
+function renderizarTreino() {
+  document.getElementById('workout-title').value = treinoAtivo.nomeTreino;
+  const container = document.getElementById('blocks-container');
+  container.innerHTML = '';
+
+  treinoAtivo.blocos.forEach((bloco, idx) => {
+    const min = Math.floor(bloco.duracaoSegundos / 60);
+    const sec = (bloco.duracaoSegundos % 60).toString().padStart(2, '0');
+    
+    let metaTexto = 'Livre';
+    if(bloco.paceMin && bloco.paceMax) {
+      metaTexto = `${segundosParaPace(bloco.paceMin)}-${segundosParaPace(bloco.paceMax)}`;
+    }
+
+    const div = document.createElement('div');
+    div.className = 'block-item';
+    div.innerHTML = `
+      <div>
+        <strong>${bloco.nome}</strong> (${min}:${sec}) <br>
+        <span style="font-size: 0.85rem; color: var(--accent)">Meta: ${metaTexto}</span>
+      </div>
+      <div class="actions-list">
+        <button class="small" onclick="editarBloco(${idx})">Editar</button>
+        <button class="small danger" onclick="deletarBloco(${idx})">X</button>
+      </div>
+    `;
+    container.appendChild(div);
+  });
+  timerControls.atualizarDisplay();
+}
+
+// --- MÉTODOS I/O DE ARQUIVOS ---
+function exportarTreinoAtual() {
+  const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(treinoAtivo, null, 2));
+  const dlAnchor = document.createElement('a');
+  dlAnchor.setAttribute("href", dataStr);
+  dlAnchor.setAttribute("download", `${treinoAtivo.nomeTreino.replace(/\s+/g, '_')}.json`);
+  document.body.appendChild(dlAnchor);
+  dlAnchor.click();
+  dlAnchor.remove();
+}
+
+function importarTreino(event) {
+  const file = event.target.files[0];
+  if (!file) return;
+
+  const reader = new FileReader();
+  reader.onload = function(e) {
+    try {
+      const importado = JSON.parse(e.target.result);
+      if (importado.nomeTreino && Array.isArray(importado.blocos)) {
+        treinoAtivo = importado;
+        persistirEAtualizar();
+        timerControls.reset();
+        alert("Treino importado com sucesso!");
+      } else { alert("Estrutura inválida."); }
+    } catch (err) { alert("Erro ao ler JSON."); }
+  };
+  reader.readAsText(file);
+}
+
+renderizarTreino();
+</script>
+</body>
+</html>
